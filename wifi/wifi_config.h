@@ -24,8 +24,8 @@ bool   wifiAPHiddden = false;
 
 // Station
 bool   wifiStationEnabled = true;
-String wifiStationSSID = "";
-String wifiStationPassword = "";
+String wifiStationSSID = "myNetwork";
+String wifiStationPassword = "mySecret";
 
 // NETWORK CONFIG
 extern bool dhcp;

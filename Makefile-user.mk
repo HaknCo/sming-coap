@@ -3,11 +3,9 @@
 ## Uncomment and change examples:
 
 #Add your source directories here separated by space
-MODULES = aura iot system weblebi wifi eventbus app
+MODULES = app wifi
 MODULES += coap/server/lobaro-coap/interface/_common coap/server/lobaro-coap/option-types coap/server/lobaro-coap/interface/esp8266 coap/server/lobaro-coap coap/server/resources coap/server coap
 MODULES += coap/client
-MODULES += cantcoap
-#MODULES = app iot onem2m system web wifi eventbus
 
 ## ESP_HOME sets the path where ESP tools and SDK are located.
 ## Windows:
