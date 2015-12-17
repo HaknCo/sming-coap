@@ -3,19 +3,48 @@
 #pragma clang diagnostic ignored "-Wconstant-logical-operand"
 #pragma clang diagnostic ignored "-Wtautological-constant-out-of-range-compare"
 
-/// Copyright (c) 2013, Ashley Mills.
+// Copyright (c) 2013, Ashley Mills.
+// modified by Hakan Coskun
+
 #include "dbg.h"
 
 #include <SmingCore/SmingCore.h>
 
-#define COAP_RESPONSE_CLASS(C) (((C) >> 5) & 0xFF)
-#define COAP_RESPONSE_CLASS(C) (((C) >> 5) & 0xFF)
+/* pre-defined constants that reflect defaults for CoAP */
+
+#define COAP_DEFAULT_RESPONSE_TIMEOUT  2 /* response timeout in seconds */
+#define COAP_DEFAULT_MAX_RETRANSMIT    4 /* max number of retransmissions */
+#define COAP_DEFAULT_PORT           5683 /* CoAP default UDP port */
+#define COAP_DEFAULT_MAX_AGE          60 /* default maximum object lifetime in seconds */
+#ifndef COAP_MAX_PDU_SIZE
+#define COAP_MAX_PDU_SIZE           1400 /* maximum size of a CoAP PDU */
+#endif /* COAP_MAX_PDU_SIZE */
+
+#define COAP_DEFAULT_VERSION           1 /* version of CoAP supported */
+#define COAP_DEFAULT_SCHEME        "coap" /* the default scheme for CoAP URIs */
+
+/** well-known resources URI */
+#define COAP_DEFAULT_URI_WELLKNOWN ".well-known/core"
+
+#ifdef __COAP_DEFAULT_HASH
+/* pre-calculated hash key for the default well-known URI */
+#define COAP_DEFAULT_WKC_HASHKEY   "\345\130\144\245"
+#endif
 
 #define COAP_HDR_SIZE 4
 #define COAP_OPTION_HDR_BYTE 1
 
-#define COAP_DEFAULT_SCHEME        "coap" /* the default scheme for CoAP URIs */
-#define COAP_DEFAULT_PORT   5683
+/* CoAP result codes (HTTP-Code / 100 * 40 + HTTP-Code % 100) */
+
+/* As of draft-ietf-core-coap-04, response codes are encoded to base
+ * 32, i.e.  the three upper bits determine the response class while
+ * the remaining five fine-grained information specific to that class.
+ */
+#define COAP_RESPONSE_CODE(N) (((N)/100 << 5) | (N)%100)
+
+/* Determines the class of response code C */
+#define COAP_RESPONSE_CLASS(C) (((C) >> 5) & 0xFF)
+
 
 // CoAP PDU format
 
@@ -98,13 +127,16 @@ class CoapPDU {
 
 		/// CoAP content-formats.
 		enum ContentFormat {
-			COAP_CONTENT_FORMAT_TEXT_PLAIN = 0,
-			COAP_CONTENT_FORMAT_APP_LINK  = 40,
-			COAP_CONTENT_FORMAT_APP_XML,
-			COAP_CONTENT_FORMAT_APP_OCTET,
-			COAP_CONTENT_FORMAT_APP_EXI   = 47,
-			COAP_CONTENT_FORMAT_APP_JSON  = 50
+			COAP_CONTENT_FORMAT_TEXT_PLAIN = 0,   /* text/plain (UTF-8) */
+			COAP_CONTENT_FORMAT_APP_LINK  = 40,   /* application/link-format */
+			COAP_CONTENT_FORMAT_APP_XML,          /* application/xml */
+			COAP_CONTENT_FORMAT_APP_OCTET,        /* application/octet-stream */
+			COAP_CONTENT_FORMAT_APP_RDF_XML,      /* application/rdf+xml */
+			COAP_CONTENT_FORMAT_APP_EXI   = 47,   /* application/exi  */
+			COAP_CONTENT_FORMAT_APP_JSON  = 50,   /* application/json  */
+			COAP_CONTENT_FORMAT_APP_CBOR  = 60    /* application/cbor  */
 		};
+
 
 		/// Sequence of these is returned by CoapPDU::getOptions()
 		struct CoapOption {
@@ -208,7 +240,6 @@ class CoapPDU {
 		uint16 getOptionDelta(uint8 *option);
 		void setOptionDelta(int optionPosition, uint16 optionDelta);
 		uint16 getOptionValueLength(uint8 *option);
-		
 };
 
 /*

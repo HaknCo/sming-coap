@@ -3,88 +3,112 @@
 #include "queue.h"
 
 static inline coap_queue_t *
-coap_malloc_PDU(void) {
+coapMallocNode(void) {
 	return (coap_queue_t *)os_zalloc(sizeof(coap_queue_t));
 }
 
-void coap_free_PDU(coap_queue_t *PDU) {
-	os_free(PDU);
+void coapFreeNode(coap_queue_t *node) {
+	os_free(node);
 }
 
-int coap_insert_PDU(coap_queue_t **queue, coap_queue_t *PDU) {
+int coapAddNode(coap_queue_t **queue, coap_queue_t *node) {
 	coap_queue_t *p, *q;
-	if ( !queue || !PDU )
+	if ( !queue || !node )
 		return 0;
 
 	/* set queue head if empty */
 	if ( !*queue ) {
-		*queue = PDU;
+		*queue = node;
 		return 1;
 	}
 
-	/* replace queue head if PDU's time is less than head's time */
+	/* replace queue head if node's time is less than head's time */
 	q = *queue;
-	if (PDU->t < q->t) {
-		PDU->next = q;
-		*queue = PDU;
-		q->t -= PDU->t;		/* make q->t relative to PDU->t */
+	if (node->t < q->t) {
+		node->next = q;
+		*queue = node;
+		q->t -= node->t;		/* make q->t relative to node->t */
 		return 1;
 	}
 
 	/* search for right place to insert */
 	do {
-		PDU->t -= q->t;		/* make PDU-> relative to q->t */
+		node->t -= q->t;		/* make node-> relative to q->t */
 		p = q;
 		q = q->next;
-	} while (q && q->t <= PDU->t);
+	} while (q && q->t <= node->t);
 
 	/* insert new item */
 	if (q) {
-		q->t -= PDU->t;		/* make q->t relative to PDU->t */
+		q->t -= node->t;		/* make q->t relative to node->t */
 	}
-	PDU->next = q;
-	p->next = PDU;
+	node->next = q;
+	p->next = node;
 	return 1;
 }
 
-int coap_delete_PDU(coap_queue_t *PDU) {
-	if ( !PDU )
+coap_queue_t * coapGetNodeById( coap_queue_t **queue, const coap_tid_t nodeId) {
+
+	debugf("Get Node by id: %d", nodeId);
+
+	coap_queue_t *p, *q, *node;
+
+	if (!queue)
 		return 0;
 
-	delete PDU->pdu; // free PDU object
-	coap_free_PDU(PDU);
+	if (!*queue)  // if empty
+		return 0;
+
+	node = *queue;
+
+	/* search for right node to remove */
+	while (node && node->id != nodeId) {
+		node = node->next;
+	}
+
+	if (node->id == nodeId) return node;
+
+	return 0;
+}
+
+int coapDeleteNode(coap_queue_t *node) {
+	if ( !node )
+		return 0;
+
+	delete node->pdu; // free node object
+	coapFreeNode(node);
 
 	return 1;
 }
 
-void coap_delete_all(coap_queue_t *queue) {
+void coapDeleteAllNodes(coap_queue_t *queue) {
 	if ( !queue )
 		return;
 
-	coap_delete_all( queue->next );
-	coap_delete_PDU( queue );
+	coapDeleteAllNodes( queue->next );
+	coapDeleteNode( queue );
 }
 
-coap_queue_t * coap_new_PDU(void) {
-	coap_queue_t *PDU;
-	PDU = coap_malloc_PDU();
+coap_queue_t * coapAllocNode(void) {
+	coap_queue_t *node;
+	node = coapMallocNode();
 
-	if ( ! PDU ) {
+	if ( ! node ) {
 		return NULL;
 	}
 
-	os_memset(PDU, 0, sizeof(*PDU));
-	return PDU;
+	os_memset(node, 0, sizeof(*node));
+	return node;
 }
 
-coap_queue_t * coap_peek_next( coap_queue_t *queue ) {
+coap_queue_t * coapPeekNext( coap_queue_t *queue ) {
 	if ( !queue )
 		return NULL;
 
 	return queue;
 }
 
-coap_queue_t * coap_pop_next( coap_queue_t **queue ) {		// this function is called inside timeout callback only.
+coap_queue_t * coapPopNext( coap_queue_t **queue ) {		// this function is called inside timeout callback only.
 	coap_queue_t *next;
 
 	if ( !(*queue) )
@@ -99,46 +123,66 @@ coap_queue_t * coap_pop_next( coap_queue_t **queue ) {		// this function is call
 	return next;
 }
 
-int coap_remove_PDU( coap_queue_t **queue, const coap_tid_t id) {
+int coapRemoveNode( coap_queue_t **queue, const coap_tid_t nodeId) {
 
-	debugf("Remove Node with id: %d", id);
+	debugf("Remove Node with id: %d", nodeId);
 
-	coap_queue_t *p, *q, *PDU;
-	if ( !queue )
+	coap_queue_t *p, *q, *node;
+
+	if (!queue)
 		return 0;
-	if ( !*queue )  // if empty
+
+	if (!*queue)  // if empty
 		return 0;
 
 	q = *queue;
-	if (q->id == id) {
-		PDU = q;
+	if (q->id == nodeId) {
+		node = q;
 		*queue = q->next;
-		PDU->next = NULL;
-		if(*queue){
-			(*queue)->t += PDU->t;
+		node->next = NULL;
+		if (*queue) {
+			(*queue)->t += node->t;
 		}
-		coap_delete_PDU(PDU);
+		coapDeleteNode(node);
 		return 1;
 	}
 
-	/* search for right PDU to remove */
-	while (q && q->id != id) {
+	/* search for right node to remove */
+	while (q && q->id != nodeId) {
 		p = q;
 		q = q->next;
 	}
 
-	/* find the PDU */
+	/* find the node */
 	if (q) {
-		PDU = q; /* save the PDU */
-		p->next = q->next;  /* remove the PDU */
+		node = q; /* save the node */
+		p->next = q->next;  /* remove the node */
 		q = q->next;
-		PDU->next = NULL;
-		if (q)   // add PDU->t to the PDU after.
-		{
-			q->t += PDU->t;
+		node->next = NULL;
+		if (q) {   // add node->t to the node after.
+			q->t += node->t;
 		}
-		coap_delete_PDU(PDU);
+		coapDeleteNode(node);
 		return 1;
 	}
 	return 0;
+}
+
+int coapQueueSize(coap_queue_t **queue) {
+
+	int size = 0;
+	coap_queue_t *node;
+
+	if (!queue)
+		return 0;
+
+	if (!*queue)  // if empty
+		return 0;
+
+	while (node) {
+		size++;
+		node = node->next;
+	}
+
+	return size;
 }

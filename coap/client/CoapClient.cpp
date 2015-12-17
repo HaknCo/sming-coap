@@ -24,6 +24,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "Coap.h"
+#include "CoapRequest.h"
 #include "CoapClient.h"
 #include "Queue.h"
 
@@ -32,20 +33,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <Wiring/WMath.h>
 #include <SmingCore/SmingCore.h>
 
-void CoapClient::onSent(void *arg) {
-	debugf("CoapClient: onSent is called.\n");
-}
 
-CoapClient::CoapClient() : CoapClient(nullptr) {
-}
-
-CoapClient::CoapClient(CoapResponseDelegate onResponseCb) {
+CoapClient::CoapClient() {
 
 	debugf("CoapClient: ctor is called.\n");
 
 	message_id = (unsigned short) rand();   // calculate only once
-
-	this->onResponseCb = onResponseCb;
 
 	retransmissionTimer.initializeMs(1000, TimerDelegate(&CoapClient::timerTick, this));
 }
@@ -54,71 +47,90 @@ CoapClient::~CoapClient() {
 	debugf("CoapClient: destructor is called.\n");
 }
 
-void CoapClient::onReceive(pbuf *pdata, IPAddress remoteIP, uint16 remotePort) {
+// Callback called by the CoapResponse class
+void CoapClient::onResponse(bool successful, CoapRequest *request, CoapPDU *pdu) {
+	coap_tid_t tid = request->getTransactionId();
 
-	debugf("CoapClient: onReceive.\n");
-	coap_tid_t id = COAP_INVALID_TID;
+	debugf("CoapClient: onResponse (%d, %d).\n", successful, request->getTransactionId());
 
-	CoapPDU *recvPDU = new CoapPDU((uint8_t*)pdata->payload, pdata->tot_len);
-	if (recvPDU->validate()!=1) {
-		ERROR("Malformed CoAP packet");
+	if (! successful) {
+		ERROR("CoapClient: malformed CoAP packet");
 		return;
 	}
 
-#ifdef COAP_DEBUG
-	INFO("Valid CoAP PDU received");
-	recvPDU->printHuman();
-#endif
 	/* check if this is a response to our original request */
-//	if (!check_token(&pkt)) {
-//		debugf("wrong token\n");
-//		/* drop if this was just some message, or send RST in case of notification */
-//		if (recvPDU->getType() == CoapPDU::COAP_CONFIRMABLE || recvPDU->getType() == CoapPDU::COAP_NON_CONFIRMABLE) {
-//			// TODO send connection reset
-//			// coap_send_rst(pkt);  // send RST response
-//			// or, just ignore it.
-//		}
-//		goto end;
-//	}
+	//	if (!check_token(&pkt)) {
+	//		debugf("wrong token\n");
+	//		/* drop if this was just some message, or send RST in case of notification */
+	//		if (recvPDU->getType() == CoapPDU::COAP_CONFIRMABLE || recvPDU->getType() == CoapPDU::COAP_NON_CONFIRMABLE) {
+	//			// TODO send connection reset
+	//			// coap_send_rst(pkt);  // send RST response
+	//			// or, just ignore it.
+	//		}
+	//		goto end;
+	//	}
 
-	if (recvPDU->getType() == CoapPDU::COAP_RESET) {
+	if (pdu->getType() == CoapPDU::COAP_RESET) {
 		debugf("got RST\n");
-		goto end;
+		// goto end;
 	}
 
-	createTransactionID((uint32) remoteIP, (uint32) remotePort, *recvPDU, &id);
+	coap_queue_t *node = coapGetNodeById(&pQueue, tid);
 
-	/* transaction done, remove the PDU from queue */
+	if (node) {
+		debugf("CoapClient: Found request for transaction id\n");
 
-	// stop timer
-	timerStop();
+		if (node->pdu->getType() == CoapPDU::COAP_NON_CONFIRMABLE) {
+			// we got a response, we are done
+			debugf("CoapClient: Got response for NONCONFIRMABLE MESSAGE\n");
+		} else if (node->pdu->getType() == CoapPDU::COAP_CONFIRMABLE) {
+			debugf("CoapClient: Got response for CONFIRMABLE MESSAGE\n");
 
-	// remove the PDU
-	coap_remove_PDU(&pQueue, id);
+			if (pdu->getType() == CoapPDU::COAP_ACKNOWLEDGEMENT) {
+				debugf("CoapClient: got ACK\n");
+			} else {
+				debugf("CoapClient: got Message but waiting for ACK\n");
+			}
+		}
+		/* transaction done, remove the PDU from queue */
 
-	// calculate time elapsed
-	timerUpdate();
-	timerRestart();
+		// stop timer
+		timerStop();
 
-	if (COAP_RESPONSE_CLASS(recvPDU->getCode()) == 2) {
-		/* There is no block option set, just read the data and we are done. */
-		debugf("%d.%02d\t", (recvPDU->getCode() >> 5), recvPDU->getCode() & 0x1F);
-		recvPDU->printHex();
-	} else if (COAP_RESPONSE_CLASS(recvPDU->getCode()) >= 4) {
-		debugf("%d.%02d\t", (recvPDU->getCode() >> 5), recvPDU->getCode() & 0x1F);
-		recvPDU->printHex();
-	}
+		if (callbacks.contains(tid)) {
+				callbacks[tid](true, *pdu);
+				callbacks.remove(tid);
+				// remove the PDU
+				debugf("CoapClient: remove node for transaction %d.\n", tid);
+				// close request, TODO what about observe
+				request->close();
+				coapRemoveNode(&pQueue, tid);
+		} else {
+			debugf("got unknown message Id\n");
+			// TODO RESET
+		}
 
-	end:
-	if (!pQueue) { // if there is no PDU pending in the queue, disconnect from host.
-		//if (pesp_conn->proto.udp->remote_port || pesp_conn->proto.udp->local_port)
-			//espconn_delete(pesp_conn);
-		//TODO disconnect
+		// calculate time elapsed
+		timerUpdate();
+		timerRestart();
+
+		if (COAP_RESPONSE_CLASS(pdu->getCode()) == 2) {
+			/* There is no block option set, just read the data and we are done. */
+			debugf("%d.%02d\t", (pdu->getCode() >> 5), pdu->getCode() & 0x1F);
+			pdu->printHex();
+		} else if (COAP_RESPONSE_CLASS(pdu->getCode()) >= 4) {
+			debugf("%d.%02d\t", (pdu->getCode() >> 5), pdu->getCode() & 0x1F);
+			pdu->printHex();
+		}
+	} else {
+		debugf("CoapClient: Could not found request for transaction id\n");
+		// TODO send reset
 	}
 }
 
 int CoapClient::request(CoapPDU::Type conn_type, CoapPDU::Code method,
-		String uri, CoapPDU::ContentFormat format, String payload /* "" */) {
+		String uri, CoapPDU::ContentFormat format, String payload /* "" */, CoapResponseDelegate callback /* nullptr */) {
+
 	debugf("CoapClient: REQUEST (%d) (%s)\n", method, uri.c_str());
 	debugf("CoapClient: CONN_TYPE (%d)\n", conn_type);
 	debugf("CoapClient: FORMAT (%d)\n", format);
@@ -135,13 +147,11 @@ int CoapClient::request(CoapPDU::Type conn_type, CoapPDU::Code method,
 	}
 
 	if (resource.Port == 80) {
-			resource.Port = COAP_DEFAULT_PORT;
+		resource.Port = COAP_DEFAULT_PORT;
 	}
 
 	if (resource.Host.length() == 0)
-	   return debugf("CoapClient: wrong URI format.");
-
-	debugf("UDP port is set: %d.\n", resource.Port);
+		return debugf("CoapClient: wrong URI format.");
 
 	struct ip_addr resolvedIP;
 	int result = dns_gethostbyname(resource.Host.c_str(), &resolvedIP, staticDnsResponse, (void*) this);
@@ -153,33 +163,17 @@ int CoapClient::request(CoapPDU::Type conn_type, CoapPDU::Code method,
 		// be called for a host lookup other than an ip address.
 		// Doesn't really matter since the loockup will be fast anyways, the host
 		// is most likely found in the dns cache of the next PDU the query is sent to.
-		debugf("Host len(%d):", resource.Host.length());
-		debugf("%s", resource.Host.c_str());
-		debugf("\n");
-
-		debugf("UDP ip is set: ");
-		debugf(IPSTR, IP2STR(&resolvedIP.addr));
-		debugf("\n");
-
 		CoapPDU& pdu = builPDU(conn_type, method, resource, format, payload);
 
 #ifdef COAP_DEBUG
 		pdu.printHuman();
 #endif
-
 		// connect to server
-		this->connect(resolvedIP, resource.Port);
-		coap_tid_t tid = COAP_INVALID_TID;
+		CoapRequest *req = new CoapRequest(resolvedIP, resource.Port, CoapRxDelegate(&CoapClient::onResponse, this));
 
-		if (pdu.getType() == CoapPDU::COAP_CONFIRMABLE ){
-			tid = sendPDUConfirmed(pdu);
-		} else {
-			tid = sendPDU(pdu);
-			if (tid == COAP_INVALID_TID) {
-				coap_remove_PDU(&pQueue, tid);
-			}
-		}
+		coap_tid_t tid = doRequest(*req, pdu);
 
+		callbacks[tid] = callback;
 	} else if (result == ERR_INPROGRESS)  {
 		// TODO store request and start retry timer
 		debugf("DNS IP lookup in progress.");
@@ -188,6 +182,66 @@ int CoapClient::request(CoapPDU::Type conn_type, CoapPDU::Code method,
 	}
 
 	return 0;
+}
+
+coap_tid_t CoapClient::doRequest(CoapRequest &req, CoapPDU &pdu) {
+
+	coap_queue_t *queueNode;
+	coap_tid_t tid = COAP_INVALID_TID;
+	timestamp diff;
+	uint32 r;
+
+	queueNode = coapAllocNode();
+	if (!queueNode) {
+		debugf("CoapClient: sendPDUConfirmed, insufficient memory\n");
+		return COAP_INVALID_TID;
+	}
+
+	if (pdu.getType() == CoapPDU::COAP_CONFIRMABLE) {
+		debugf("CoapClient: Send PDU confirmed\n");
+
+		/* Set timer for pdu retransmission. If this is the first element in
+		 * the retransmission queue, the base time is set to the current
+		 * time and the retransmission time is PDU->timeout. If there is
+		 * already an entry in the transmission queue, we must check if this PDU is
+		 * to be retransmitted earlier. Therefore, PDU->timeout is first
+		 * normalized to the timeout and then inserted into the queue with
+		 * an adjusted relative time.
+		 */
+
+		queueNode->retransmit_cnt = 0;
+
+		r = rand();
+
+		/* add randomized RESPONSE_TIMEOUT to determine retransmission timeout */
+		queueNode->timeout = COAP_DEFAULT_RESPONSE_TIMEOUT * COAP_TICKS_PER_SECOND +
+				(COAP_DEFAULT_RESPONSE_TIMEOUT >> 1) *
+				((COAP_TICKS_PER_SECOND * (r & 0xFF)) >> 8);
+
+	} else {
+		debugf("CoapClient: Send PDU non-confirmed\n");
+		// Queue non-confirmable PDUs in order handle failed transmissions
+		queueNode->timeout = COAP_DEFAULT_RESPONSE_TIMEOUT * COAP_TICKS_PER_SECOND;
+	}
+
+	queueNode->req = &req;
+	queueNode->pdu = &pdu;
+
+#ifdef COAP_DEBUG
+	debugf("CoapClient: Sending ...\n");
+	pdu.printHex();
+#endif
+
+	// send packet
+    queueNode->id = req.sendPDU(pdu);
+
+	timerStop();
+	timerUpdate();
+	queueNode->t = queueNode->timeout;
+	coapAddNode(&pQueue, queueNode);
+	timerRestart();
+
+	return queueNode->id;
 }
 
 CoapPDU& CoapClient::builPDU(CoapPDU::Type conn_type, CoapPDU::Code method, URL resource,
@@ -203,7 +257,7 @@ CoapPDU& CoapClient::builPDU(CoapPDU::Type conn_type, CoapPDU::Code method, URL 
 	pdu->setContentFormat(format);
 
 	if (payload.length() > 0) {
-		debugf("PDU has payload\n");
+		debugf("CoapClient: PDU has payload\n");
 		debugf("%s\n", payload.c_str());
 		pdu->setPayload((unsigned char*) payload.c_str(), payload.length());
 	}
@@ -212,74 +266,6 @@ CoapPDU& CoapClient::builPDU(CoapPDU::Type conn_type, CoapPDU::Code method, URL 
 
 	return *pdu;
 };
-
-coap_tid_t CoapClient::sendPDU(CoapPDU &pdu) {
-	coap_tid_t id = COAP_INVALID_TID;
-
-	//if (pdu == nullptr) return id;
-
-	createTransactionID((uint32) this->udp->remote_ip.addr, (uint32) this->udp->remote_port, pdu, &id);
-
-	debugf("CoapClient: Send PDU with transaction id %d\n", id);
-
-#ifdef COAP_DEBUG
-	debugf("CoapClient: Sending ...\n");
-	pdu.printHex();
-#endif
-
-	// send packet
-	send((char*) pdu.getPDUPointer(), pdu.getPDULength());
-
-	INFO("Packet sent");
-
-	return id;
-}
-
-coap_tid_t CoapClient::sendPDUConfirmed(CoapPDU &pdu) {
-	  coap_queue_t *PDU;
-	  timestamp diff;
-	  uint32 r;
-
-	  debugf("CoapClient: Send PDU confirmed\n");
-
-	  PDU = coap_new_PDU();
-	  if (!PDU) {
-	    debugf("CoapClient: sendPDUConfirmed, insufficient memory\n");
-	    return COAP_INVALID_TID;
-	  }
-
-	  PDU->retransmit_cnt = 0;
-	  PDU->id = sendPDU(pdu);
-	  if (COAP_INVALID_TID == PDU->id) {
-	    debugf("CoapClient: sendPDUConfirmed, error sending PDU\n");
-	    coap_free_PDU(PDU);
-	    return COAP_INVALID_TID;
-	  }
-
-	  r = rand();
-
-	  /* add randomized RESPONSE_TIMEOUT to determine retransmission timeout */
-	  PDU->timeout = COAP_DEFAULT_RESPONSE_TIMEOUT * COAP_TICKS_PER_SECOND +
-	    (COAP_DEFAULT_RESPONSE_TIMEOUT >> 1) *
-	    ((COAP_TICKS_PER_SECOND * (r & 0xFF)) >> 8);
-
-	  PDU->pdu = &pdu;
-
-	  /* Set timer for pdu retransmission. If this is the first element in
-	   * the retransmission queue, the base time is set to the current
-	   * time and the retransmission time is PDU->timeout. If there is
-	   * already an entry in the sendqueue, we must check if this PDU is
-	   * to be retransmitted earlier. Therefore, PDU->timeout is first
-	   * normalized to the timeout and then inserted into the queue with
-	   * an adjusted relative time.
-	   */
-	  timerStop();
-	  timerUpdate();
-	  PDU->t = PDU->timeout;
-	  coap_insert_PDU(&pQueue, PDU);
-	  timerRestart();
-	  return PDU->id;
-}
 
 void CoapClient::staticDnsResponse(const char *name, struct ip_addr *ip, void *arg) {
 	// DNS has been resolved
@@ -296,7 +282,8 @@ void CoapClient::staticDnsResponse(const char *name, struct ip_addr *ip, void *a
 /** Retransmission handling */
 
 void CoapClient::timerRestart() {
-	if (pQueue) { // if there is a PDU in the queue, set timeout to its ->t.
+	if (pQueue) {
+		// if there is a PDU in the queue, set timeout to its ->t.
 		retransmissionTimer.setIntervalMs(pQueue->t);
 		retransmissionTimer.startOnce();
 	}
@@ -307,71 +294,112 @@ void CoapClient::timerStop() {
 }
 
 void CoapClient::timerTick() {
+	coap_queue_t *node = coapPopNext(&pQueue);
 
-  coap_queue_t *PDU = coap_pop_next( &pQueue );
-  /* re-initialize timeout when maximum number of retransmissions are not reached yet */
-  if (PDU->retransmit_cnt < COAP_DEFAULT_MAX_RETRANSMIT) {
-    PDU->retransmit_cnt++;
-    PDU->t = PDU->timeout << PDU->retransmit_cnt;
+	// non-confirmable PDU could not be sent, inform callback
+	if (node->pdu->getType() == CoapPDU::COAP_NON_CONFIRMABLE) {
+		debugf("CoapClient: non-confirmable PDU with transaction id %d could not be sent\n", node->id);
+		// call callback
+		if (callbacks.contains(node->id)) {
+			callbacks[node->id](false, *node->pdu);
+		}
+		// remove PDU
+		//   coapRemoveNode(&pQueue, node->id);
+		coapDeleteNode(node);
+	} else {
+		/* re-initialize timeout when maximum number of retransmissions are not reached yet */
+		if (node->retransmit_cnt < COAP_DEFAULT_MAX_RETRANSMIT) {
+			node->retransmit_cnt++;
+			node->t = node->timeout << node->retransmit_cnt;
 
-    debugf("** retransmission #%d of transaction %d\n", PDU->retransmit_cnt, PDU->pdu->getMessageID());
-    PDU->id = sendPDU(*(PDU->pdu));
-    if (COAP_INVALID_TID == PDU->id) {
-      debugf("retransmission: error sending PDU\n");
-      coap_delete_PDU(PDU);
-    } else {
-      coap_insert_PDU(&pQueue, PDU);
-    }
-  } else {
-    /* And finally delete the PDU */
-    coap_delete_PDU( PDU );
-  }
+			debugf("CoapClient: retransmission #%d of transaction %d\n", node->retransmit_cnt, node->id);
 
-  timerRestart();
+			// re-transmit PDU
+			node->id = node->req->sendPDU(*node->pdu);
+			if (COAP_INVALID_TID == node->id) {
+				debugf("CoapClient: error sending PDU\n");
+				coapDeleteNode(node);
+			} else {
+				coapAddNode(&pQueue, node);
+			}
+		} else {
+			debugf("CoapClient: maximum retransmissions for transaction %d reached.\n", node->id);
+			/* Maximum number of retransmissions reached. Inform the callback and remove PDU */
+			if (callbacks.contains(node->id)) {
+				callbacks[node->id](false, *node->pdu);
+			}
+			coapDeleteNode(node);
+		}
+	}
+
+	timerRestart();
 }
 
 void CoapClient::timerUpdate() {
-  timestamp diff = 0;
-  coap_queue_t *first = pQueue;
-  timerElapsed(&diff); // update: basetime = now, diff = now - oldbase, means time elapsed
-  if (first) {
-    // diff ms time is elapsed, re-calculate the first PDU->t
-    if (first->t >= diff){
-      first->t -= diff;
-    } else {
-      first->t = 0;  // when timer enabled, time out almost immediately
-    }
-  }
+	timestamp diff = 0;
+	coap_queue_t *first = pQueue;
+	timerElapsed(&diff); // update: basetime = now, diff = now - oldbase, means time elapsed
+
+	if (first) {
+		// diff ms time is elapsed, re-calculate the first PDU->t
+		if (first->t >= diff){
+			first->t -= diff;
+		} else {
+			first->t = 0;  // when timer enabled, time out almost immediately
+		}
+	}
 }
 
 void CoapClient::timerElapsed(timestamp *diff) {
-  timestamp now = system_get_time() / 1000;   // coap_tick_t is in ms. also sys_timer
+	timestamp now = system_get_time() / 1000;   // coap_tick_t is in ms. also sys_timer
 
-  if(now >= basetime){
-    *diff = now-basetime;
-  } else {
-    *diff = now + SYS_TIME_MAX -basetime;
-  }
-  basetime = now;
+	if (now >= basetime) {
+		*diff = now-basetime;
+	} else {
+		*diff = now + SYS_TIME_MAX -basetime;
+	}
+	basetime = now;
 }
 
-// REST Operations
-int CoapClient::get(CoapPDU::Type conn_type, String uri) {
+// Methods
+int CoapClient::get(String uri, CoapResponseDelegate responseCallback) {
+	return get(CoapPDU::COAP_NON_CONFIRMABLE, uri, responseCallback);
+}
+
+int CoapClient::get(CoapPDU::Type connType, String uri, CoapResponseDelegate responseCallback) {
 	debugf("CoapClient: GET (%s)", uri.c_str());
-	return this->request(conn_type, CoapPDU::COAP_GET, uri, CoapPDU::ContentFormat::COAP_CONTENT_FORMAT_TEXT_PLAIN);
+	return this->request(connType, CoapPDU::COAP_GET, uri, CoapPDU::ContentFormat::COAP_CONTENT_FORMAT_TEXT_PLAIN, "", responseCallback);
 }
 
-int CoapClient::post(CoapPDU::Type conn_type, String uri, CoapPDU::ContentFormat format, String payload) {
+int CoapClient::post(String uri, CoapResponseDelegate responseCallback) {
+	return post(CoapPDU::COAP_NON_CONFIRMABLE, uri, responseCallback);
+}
+
+int CoapClient::post(CoapPDU::Type connType, String uri, CoapResponseDelegate responseCallback) {
+	return post(connType, uri, "", responseCallback);
+}
+
+int CoapClient::post(CoapPDU::Type connType, String uri, String payload, CoapResponseDelegate responseCallback) {
+	return post(connType, uri, CoapPDU::ContentFormat::COAP_CONTENT_FORMAT_APP_JSON, payload, responseCallback);
+}
+
+int CoapClient::post(CoapPDU::Type connType, String uri, CoapPDU::ContentFormat format, String payload, CoapResponseDelegate responseCallback) {
 	debugf("CoapClient: POST (%s)", uri.c_str());
-	return this->request(conn_type, CoapPDU::COAP_POST, uri, format, payload);
+	return this->request(connType, CoapPDU::COAP_POST, uri, format, payload, responseCallback);
 }
 
-int CoapClient::put(CoapPDU::Type conn_type, String uri, CoapPDU::ContentFormat format, String payload) {
+int CoapClient::put(CoapPDU::Type conn_type, String uri, CoapPDU::ContentFormat format, String payload, CoapResponseDelegate responseCallback) {
 	debugf("CoapClient: PUT (%s)", uri.c_str());
-	return this->request(conn_type, CoapPDU::COAP_PUT, uri, format, payload);
+	return this->request(conn_type, CoapPDU::COAP_PUT, uri, format, payload, responseCallback);
 }
 
-int CoapClient::del(CoapPDU::Type conn_type, String uri) {
+int CoapClient::del(CoapPDU::Type conn_type, String uri, CoapResponseDelegate responseCallback) {
 	debugf("CoapClient: DELETE (%s)", uri.c_str());
-	return this->request(conn_type, CoapPDU::COAP_DELETE, uri, CoapPDU::ContentFormat::COAP_CONTENT_FORMAT_TEXT_PLAIN);
+	return this->request(conn_type, CoapPDU::COAP_DELETE, uri, CoapPDU::ContentFormat::COAP_CONTENT_FORMAT_TEXT_PLAIN, "", responseCallback);
 }
+
+int CoapClient::observe(CoapPDU::Type conn_type, String uri, CoapResponseDelegate responseCallback) {
+	debugf("CoapClient: OBSERVE (%s)", uri.c_str());
+	return this->request(conn_type, CoapPDU::COAP_GET, uri, CoapPDU::ContentFormat::COAP_CONTENT_FORMAT_TEXT_PLAIN, "", responseCallback);
+}
+

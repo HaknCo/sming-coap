@@ -1,11 +1,17 @@
 #ifndef _NODE_H
 #define _NODE_H 1
 
+#include "CoapRequest.h"
+
 #include "Coap.h"
+
 #include "Hash.h"
 
 struct coap_queue_t;
 typedef uint32 timestamp;
+
+// forward declaration
+class CoapRequest;
 
 /*
 1. queue(first)->t store when to send PDU for the next time, it's a base(absolute) time
@@ -25,24 +31,31 @@ typedef struct coap_queue_t {
   coap_tid_t id;			/**< unique transaction id */
 
   CoapPDU *pdu;				/**< the CoAP PDU to send */
+  CoapRequest *req;			/** Request containing the connection */
 } coap_queue_t;
 
-void coap_free_PDU(coap_queue_t *PDU);
+void coapFreeNode(coap_queue_t *node);
 
-/** Adds PDU to given queue, ordered by PDU->t. */
-int coap_insert_PDU(coap_queue_t **queue, coap_queue_t *PDU);
+/** Adds node to given queue, ordered by node->t. */
+int coapAddNode(coap_queue_t **queue, coap_queue_t *node);
 
-/** Destroys specified PDU. */
-int coap_delete_PDU(coap_queue_t *PDU);
+/** Retrieves a node from the queue by id */
+coap_queue_t * coapGetNodeById( coap_queue_t **queue, const coap_tid_t nodeId);
+
+/** Destroys specified node. */
+int coapDeleteNode(coap_queue_t *node);
 
 /** Removes all items from given queue and frees the allocated storage. */
-void coap_delete_all(coap_queue_t *queue);
+void coapDeleteAllNodes(coap_queue_t *queue);
 
-/** Creates a new PDU suitable for adding to the CoAP sendqueue. */
-coap_queue_t *coap_new_PDU(void);
+/** Creates a new PDU suitable for adding to the CoAP transmission queue. */
+coap_queue_t *coapAllocNode(void);
 
-coap_queue_t *coap_pop_next( coap_queue_t **queue );
+coap_queue_t *coapPopNext( coap_queue_t **queue );
 
-int coap_remove_PDU( coap_queue_t **queue, const coap_tid_t id);
+int coapRemoveNode( coap_queue_t **queue, const coap_tid_t id);
+
+/** counts the number of nodes in the queue */
+int coapQueueSize(coap_queue_t **queue);
 
 #endif

@@ -20,6 +20,13 @@ void coap_hash(const unsigned char *s, unsigned int len, coap_key_t h) {
   }
 }
 
+/**
+ * RFC 7252, 4.4
+ *   For an Acknowledgement or Reset message to match a Confirmable or
+ *   Non-confirmable message, the Message ID and source endpoint of the
+ *   Acknowledgement or Reset message MUST match the Message ID and
+ *   destination endpoint of the Confirmable or Non-confirmable message.
+ */
 void createTransactionID(const uint32 ip, const uint32 port, CoapPDU &pdu, coap_tid_t *id) {
 	coap_key_t h;
 	os_memset(h, 0, sizeof(coap_key_t));
