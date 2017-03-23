@@ -44,7 +44,7 @@ typedef enum
 #define CODE(CLASS, CODE) ( (CLASS <<5) | CODE )
 typedef enum
 {
-	COAP_EMPTY	= CODE(0,0),
+	EMPTY 		= CODE(0,0),
 	REQ_GET 	= CODE(0,1),
 	REQ_POST 	= CODE(0,2),
 	REQ_PUT 	= CODE(0,3),

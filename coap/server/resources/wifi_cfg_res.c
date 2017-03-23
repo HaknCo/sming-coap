@@ -20,6 +20,7 @@
  * THE SOFTWARE.
  *******************************************************************************/
 #include <user_config.h>
+#include <user_interface.h>
 
 #include "../lobaro-coap/coap.h"
 #include "wifi_cfg_res.h"

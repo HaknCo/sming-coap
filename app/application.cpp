@@ -11,9 +11,8 @@
 
 void init() {
 	Serial.printf("Starting Smart Sensor\n");
-	Serial.printf("app: start init. Heap size: %d\n", xPortGetFreeHeapSize());
-
+	Serial.printf("app: start init. Heap size: %d\n", system_get_free_heap_size());
 	networkSetup();
 
-	Serial.printf("app: after init. Heap size: %d\n", xPortGetFreeHeapSize());
+	Serial.printf("app: after init. Heap size: %d\n", system_get_free_heap_size());
 }

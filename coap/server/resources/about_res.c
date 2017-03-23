@@ -19,6 +19,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  *******************************************************************************/
+#include <user_config.h>
+
 #include "../lobaro-coap/coap.h"
 #include "about_res.h"
 

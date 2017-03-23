@@ -18,7 +18,6 @@ Timer pushTimer;
 
 CoapClient coapClient;
 
-
 void onConfigRetrieve(bool success, CoapPDU pdu) {
 	debugf("Network: onConfigRetrieve called.\n");
 

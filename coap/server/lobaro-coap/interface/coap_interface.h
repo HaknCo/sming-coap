@@ -36,9 +36,9 @@
 //ESP8266 specific glue (because the sdk has no complete std c lib)
 #ifdef __ets__ //to be defined ("-D__ets__") in makefile as compiler argument (normally given with ESP8266 SDK)
 	//ESP8266 with partial libC from SDK
-//	#include <osapi.h>
-//	#include <os_type.h>
-        #include <user_config.h>
+	// #include <osapi.h>
+	// #include <os_type.h>
+	//#include <user_config.h>
 
 	#define _rom ICACHE_FLASH_ATTR
 	#define _ram

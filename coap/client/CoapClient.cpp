@@ -54,7 +54,7 @@ void CoapClient::onResponse(bool successful, CoapRequest *request, CoapPDU *pdu)
 	debugf("CoapClient: onResponse (%d, %d).\n", successful, request->getTransactionId());
 
 	if (! successful) {
-		ERROR("CoapClient: malformed CoAP packet");
+		LOG_COAP_ERROR("CoapClient: malformed CoAP packet");
 		return;
 	}
 

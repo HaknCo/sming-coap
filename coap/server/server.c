@@ -24,13 +24,13 @@ void ICACHE_FLASH_ATTR init_done(void) {
 	CoAP_ESP8266_CreateInterfaceSocket(0, &CoAP_conn, 5683, CoAP_onNewPacketHandler, CoAP_ESP8266_SendDatagram);
 
 	Create_Wifi_IPs_Resource(); 		//example of simple GET resource
-	Create_About_Resource();		//example of large resource (blockwise transfers)
-	Create_Wifi_Config_Resource(); 	//example of uri-query usage
-	//Create_RTC_Resource(); 		//example of observable resource
-	Create_Led_Resource(); 		//example of observable resource triggered by itself + uri-query usage
+	Create_About_Resource();			//example of large resource (blockwise transfers)
+	Create_Wifi_Config_Resource(); 		//example of uri-query usage
+	Create_RTC_Resource(); 				//example of observable resource
+	Create_Led_Resource(); 				//example of observable resource triggered by itself + uri-query usage
 	Create_Wifi_Scan_Resource(); 		//example of longer lasting "postponed" resource with two responses (1. empty ACK, 2. actual resource)
 
-	debugf("- CoAP init done! Used CoAP ram memory:\r\n"); //note: static ram footprint depends primary on resource count+uri lengths
+	ets_uart_printf("- CoAP init done! Used CoAP ram memory:\r\n"); //note: static ram footprint depends primary on resource count+uri lengths
 	coap_mem_determinateStaticMem();
 	coap_mem_stats();
 
@@ -40,13 +40,12 @@ void ICACHE_FLASH_ATTR init_done(void) {
 	os_timer_arm(&MainLoop_timer, DELAY_LOOP, 1);
 }
 
-void ICACHE_FLASH_ATTR start_coap_server() {
+void start_coap_server(void) {
 	// Configure the UART
-	//uart_init(BIT_RATE_115200, BIT_RATE_115200);
-	debugf("\r\n\r\nLobaro-CoAP on ESP8266 Demo!\r\nwww.lobaro.com\r\n\r\n");
+	// uart_init(BIT_RATE_115200, BIT_RATE_115200);
+	ets_uart_printf("\r\n\r\nLobaro-CoAP on ESP8266 Demo!\r\nwww.lobaro.com\r\n\r\n");
 
 	//Config ESP8266 network
 	CoAP_ESP8266_ConfigDevice();
-	// system_init_done_cb(init_done);
-	init_done();
+	system_init_done_cb(init_done);
 }

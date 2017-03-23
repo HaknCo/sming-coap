@@ -19,10 +19,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  *******************************************************************************/
+#include <user_config.h>
+
 #include "../lobaro-coap/coap.h"
 #include "led_res.h"
-
-#include <board.h>
 
 CoAP_Res_t* pLed_Res = NULL;
 
@@ -30,18 +30,14 @@ bool LedState = true;
 
 static void ICACHE_FLASH_ATTR led(bool onOff) {
 
-	if(onOff) {
-		gpio_output_set(0, 1 << PIN_LED, 1 << PIN_LED, 0);
-		ets_uart_printf("LED on\r\n");
-	} else {
-		gpio_output_set(1 << PIN_LED, 0, 1 << PIN_LED, 0);
-		ets_uart_printf("LED off\r\n");
-	}
+	if(onOff) {gpio_output_set(0, 1 << 12, 1 << 12, 0);ets_uart_printf("LED on\r\n");}
+	else  {gpio_output_set(1 << 12, 0, 1 << 12, 0);ets_uart_printf("LED off\r\n");}
 
 	if(LedState != onOff) {
 		CoAP_NotifyResourceObservers(pLed_Res); //Notify all observers of change
 		LedState = onOff;
 	}
+
 }
 
 static void ICACHE_FLASH_ATTR SetLedstatePayload(CoAP_Message_t* pReq, CoAP_Message_t* pResp){

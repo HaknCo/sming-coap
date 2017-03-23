@@ -72,14 +72,14 @@ void CoapRequest::onReceive(pbuf *pdata, IPAddress remoteIP, uint16 remotePort) 
 
 	CoapPDU *recvPDU = new CoapPDU((uint8*)pdata->payload, pdata->tot_len);
 	if (recvPDU->validate()!=1) {
-		ERROR("malformed CoAP packet");
+		LOG_COAP_ERROR("malformed CoAP packet");
 		// inform client about wrong PDU
 		onResponseCb(false, this, recvPDU);
 		return;
 	}
 
 #ifdef COAP_DEBUG
-	INFO("Valid CoAP PDU received");
+	LOG_COAP_INFO("Valid CoAP PDU received");
 	recvPDU->printHuman();
 #endif
 

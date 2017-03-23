@@ -23,6 +23,7 @@
 #ifndef COAP_H_
 #define COAP_H_
 
+#include <user_config.h>
 //"glue" and actual system related functions
 //go there to see what to do adapting the library to your platform
 #include "interface/coap_interface.h"

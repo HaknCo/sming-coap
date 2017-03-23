@@ -26,6 +26,8 @@
  *      Author: Tobias
  */
 
+#include <user_config.h>
+
 #include "../../coap.h"
 #include "lobaro-coap_esp8266.h"
 
@@ -400,7 +402,6 @@ bool ICACHE_FLASH_ATTR CoAP_ESP8266_ConfigDevice(){
 		os_memset(cfg.bssid, 0, 6);
 		cfg.bssid_set = 0;
 
-
 		ets_uart_printf("ssid not configured!\r\n");
 		coap_strcpy(cfg.ssid,"not_configured!");
 		coap_strcpy(cfg.password,"12345678");
@@ -409,7 +410,7 @@ bool ICACHE_FLASH_ATTR CoAP_ESP8266_ConfigDevice(){
 
 
 	if(ESP8266_Config_Station()==false) { //no valid config/could not start station connect
-		ets_uart_printf("(!!!) Could not start connecto to external AP. Try config via softap interface (coap://192.168.4.1:5683) and reset esp8266\r\n");
+		ets_uart_printf("(!!!) Could not start connect to to external AP. Try config via softap interface (coap://192.168.4.1:5683) and reset esp8266\r\n");
 		ESP8266_Config_SoftAP(); //enables STATION+SOFTAP mode
 	}
 

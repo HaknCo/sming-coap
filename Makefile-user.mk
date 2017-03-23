@@ -2,6 +2,8 @@
 ## Parameters configured here will override default and ENV values.
 ## Uncomment and change examples:
 
+ENABLE_ESPCONN=1
+
 #Add your source directories here separated by space
 MODULES = app wifi
 MODULES += coap/server/lobaro-coap/interface/_common coap/server/lobaro-coap/option-types coap/server/lobaro-coap/interface/esp8266 coap/server/lobaro-coap coap/server/resources coap/server coap

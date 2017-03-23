@@ -52,5 +52,4 @@ bool  CoAP_ESP8266_ConfigDevice();
 
 #define MAX_CON_RETRIES_BEFORE_ACTIVATING_SOFT_AP (2) //turn on the softAP after x-connection retries to external AP/Router
 
-
 #endif
