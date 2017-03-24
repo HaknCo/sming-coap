@@ -1,6 +1,6 @@
 //  based on NodeMCU CoAP module
 #include "user_config.h"
-#include "queue.h"
+#include "Queue.h"
 
 static inline coap_queue_t *
 coapMallocNode(void) {

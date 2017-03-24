@@ -70,7 +70,7 @@ class CoapPDU {
 			COAP_ACKNOWLEDGEMENT=0x20,
 			COAP_RESET=0x30
 		};
-		
+
 		// CoAP response codes.
 		enum Code {
 			COAP_EMPTY=0x00,
@@ -78,6 +78,7 @@ class CoapPDU {
 			COAP_POST,
 			COAP_PUT,
 			COAP_DELETE,
+			COAP_LASTMETHOD=0x1F,
 			COAP_CREATED=0x41,
 			COAP_DELETED,
 			COAP_VALID,
@@ -253,7 +254,7 @@ class CoapPDU {
 
 // Response codes 2.00 - 5.31
 // 2.00 - 2.05
-#define COAP_CODE_CREATED 0x41 
+#define COAP_CODE_CREATED 0x41
 #define COAP_CODE_DELETED 0x42
 #define COAP_CODE_VALID   0x43
 #define COAP_CODE_CHANGED 0x44
